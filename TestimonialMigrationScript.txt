@@ -1,0 +1,209 @@
+import javax.jcr.Node
+import javax.jcr.Session
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.lang3.StringUtils;
+import com.day.cq.dam.api.Asset;
+import com.day.cq.replication.Replicator;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+ 
+
+def replicator = getService("com.day.cq.replication.Replicator")
+def carouselResPath = "bdb-aem/proxy/components/common/carousel"
+def teaserPath = "bdb-aem/proxy/components/common/teaser"
+ 
+def styleIdsCarousel = []
+ 
+ 
+
+def filePath = "/content/dam/bdb/groovy-script/testimonial-migration/testimonial.xlsx"
+if (StringUtils.isNoneBlank(filePath)) {
+	Resource res = resourceResolver.getResource(filePath)
+	def loopCounter = 0
+	Asset asset = res.adaptTo(Asset.class);
+	Rendition rendition = asset.getOriginal();
+	InputStream inputStream = rendition.adaptTo(InputStream.class);
+	Workbook excelWorkBook = new XSSFWorkbook(inputStream);
+	Sheet sheet = excelWorkBook.getSheetAt(0);
+	Iterator<Row> rowIterator = sheet.iterator();
+
+	int firstRowNum = sheet.getFirstRowNum();
+	int lastRowNum = sheet.getLastRowNum();
+	int count = 0;
+	int publishCount = 0;
+	if (null != asset) {
+    	int resourceFound = 0;
+		for (int i = firstRowNum +1; i <lastRowNum+1; i++) {
+			loopCounter++
+			Row row = sheet.getRow(i);
+			int lastCell = row.getLastCellNum();
+			if(lastCell == -1) {
+				break;
+			}
+			//first column
+			Cell componentPath = row.getCell(--lastCell)
+			def componentPathValue = componentPath.getStringCellValue()
+			def rootPath = componentPathValue.substring(0, componentPathValue.lastIndexOf('/'))
+			def slash_testimonial = componentPathValue.substring(componentPathValue.lastIndexOf('/') + 1)
+			def pathList = resourceResolver.getResource(componentPathValue);
+			def rootResource = resourceResolver.getResource(rootPath);
+			def session = resourceResolver.adaptTo(Session);
+			if (null != pathList && pathList.hasChildren()) {
+				def child = pathList.getChild("slides");
+				if (null != child && child.hasChildren()) {
+				    // getting the root node type
+    			    Node currentNode = rootResource.adaptTo(Node.class)
+                    // Creating a crousel node under root node /currentNode 
+                    currentNode.addNode("carousel", "nt:unstructured")
+                    Node carouselNode = getNode(rootPath +"/carousel") 
+                    carouselNode.setProperty("sling:resourceType", carouselResPath)
+                    carouselNode.setProperty("accessibilityAutoItemTitles", "false")
+                    carouselNode.setProperty("autoplay", "true")
+                    // Getting the testimonial carousel node
+                    Node testimonalCarouselNode = getNode(componentPathValue)
+                    def testPropertyIterator = testimonalCarouselNode.properties
+                    // Iterarting over the testimonialCarousel node and setting the properties under the carousel node
+                    while (testPropertyIterator.hasNext()) {
+                    	def property = testPropertyIterator.nextProperty()
+                    	if(!property.name.startsWith("jcr:")) {
+                    		// Setting Carousel node properties
+                    		if(property.name.equalsIgnoreCase("anchorIdDescription")) {
+                    			carouselNode.setProperty("anchorIdDescription", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("enableAnchorIdentifier")) {
+                    			carouselNode.setProperty("enableAnchorIdentifier", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("title")) {
+                    			carouselNode.setProperty("title", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("disableAutoplay")) {
+                    			carouselNode.setProperty("autopauseDisabled", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("autoplayspeed")) {
+                    			carouselNode.setProperty("delay", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("textIsRich")) {
+                    			carouselNode.setProperty("textIsRich", "true")
+                    		}
+                    	}
+                    }
+                    styleIdsCarousel.add("1735643505384") // Testimonial Variations
+                    styleIdsCarousel.add("1735643734713") // Carousel controlls dark
+                    Node slideNode = getNode(componentPathValue +"/slides")
+                    def childNodes = slideNode.getNodes()
+                    int j = 1
+                    while (childNodes.hasNext()) {
+                        def item = childNodes.nextNode()
+                        def teaserNode = carouselNode.addNode(item.name, "nt:unstructured")
+                        teaserNode.setProperty("sling:resourceType", teaserPath)
+                        teaserNode.setProperty("altValueFromDAM", "false")
+                        teaserNode.setProperty("imageFromPageImage", "false")
+                        teaserNode.setProperty("descriptionFromPage", "false")
+                        teaserNode.setProperty("titleFromPage", "false")
+                        teaserNode.setProperty("isDecorative", "false")
+                        teaserNode.setProperty("cq:panelTitle", "Slide"+ j)
+                        j++
+                        def propertyIterator = item.properties
+                        while (propertyIterator.hasNext()) {
+                            def property = propertyIterator.nextProperty()
+                            if(!property.name.startsWith("jcr:")) {
+                                if(property.name.equalsIgnoreCase("imagePath")) {
+                                    teaserNode.setProperty("fileReference", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("altImage")) {
+                                    teaserNode.setProperty("alt", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("brightcoveVideoId")) {
+                                    teaserNode.setProperty("brightcoveVideoId", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("ctaLabel")) {
+                                    teaserNode.setProperty("primaryCtaLabel", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("ctaUrl")) {
+                                    teaserNode.setProperty("primaryCtaLink", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("extraCtaLabel")) {
+                                    teaserNode.setProperty("secondaryCtaLabel", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("extraCtaUrl")) {
+                                    teaserNode.setProperty("secondaryCtaLink", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("pname")) {
+                                    teaserNode.setProperty("pname", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("department")) {
+                                    teaserNode.setProperty("department", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("university")) {
+                                    teaserNode.setProperty("university", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("testimonialId")) {
+                                    teaserNode.setProperty("testimonialId", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("description")) {
+                                    teaserNode.setProperty("jcr:description", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("videoEnabled")) {
+                                    teaserNode.setProperty("videoEnabled", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("thumbnail")) {
+                                    if(property.value.string.contains("playButton.svg")) {
+                                        teaserNode.setProperty("playIcon", "/content/dam/bdb/general/new-icons/playButton.svg")
+                                    } else{
+                                        teaserNode.setProperty("playIcon", "/content/dam/bdb/general/new-icons/play-video.svg")
+                                    }
+                                }
+                                else if(property.name.equalsIgnoreCase("textIsRich")) {
+            				        teaserNode.setProperty("textIsRich", "true")
+            			        }
+                                else if(property.name.equalsIgnoreCase("fontStyle")) {
+                                    def styleIdsTeaser = [] 
+                                    if (property.value.string.equals("bold")) {
+                                        styleIdsTeaser.add("1734695643381")
+                                        teaserNode.setProperty("cq:styleIds", styleIdsTeaser.unique() as String[]) 
+                                    } else {
+                                        styleIdsTeaser.add("1734695646905")
+                                        teaserNode.setProperty("cq:styleIds", styleIdsTeaser.unique() as String[]) 
+                                    }
+                                }
+                                else if(property.name.equalsIgnoreCase("bgColor")) {
+                                    if (property.value.string.equals("#FFFFFF")) { // White
+                                        styleIdsCarousel.add("1735643635376")
+                                    } else if(property.value.string.equals("#5F6062") || property.value.string.equals("#E6E7E9") || property.value.string.equals("#404041")) { // Grey or light grey or dark
+                                            styleIdsCarousel.add("1735643643228")
+                                    } else if(property.value.string.equals("#A9DCD6") || property.value.string.equals("#009988") 
+                                                    ||  property.value.string.equals("#ADDFEB") ||  property.value.string.equals("#0090B5")
+                                                    ||  property.value.string.equals("#8CC6EC") ||  property.value.string.equals("#023970")) { // light iris blue or dark or iris blue(L,D) or blue(L,D) 
+                                            styleIdsCarousel.add("1737373114234")
+                                    }
+                                    carouselNode.setProperty("cq:styleIds", styleIdsCarousel.unique() as String[]) 
+                                }
+                            }
+                            else {
+                                continue;
+                            }
+                        }
+                    }
+				} else {
+				    	println "Slides node is not present under :" + componentPathValue;
+				}
+			}
+			
+			count++;
+			session.save()
+			String path = rootPath +"/carousel"
+            // Activating container node
+			// replicator.replicate(session, ReplicationActionType.ACTIVATE, path)
+			// println "Activated node :" +path
+            // Component path
+            println "path :" +path
+		}
+	}
+	println "Nodes updated successfully: " + count;
+}else {
+	throw new IllegalArgumentException("Path should not be null");
+}

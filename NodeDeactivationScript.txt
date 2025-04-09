@@ -1,0 +1,57 @@
+import javax.jcr.Node
+import javax.jcr.Session
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.lang3.StringUtils;
+import com.day.cq.dam.api.Asset;
+import com.day.cq.replication.Replicator;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+ 
+def replicator = getService("com.day.cq.replication.Replicator")
+def filePath = "/content/dam/bdb/groovy-script/test.xlsx"
+if (StringUtils.isNoneBlank(filePath)) {
+	Resource res = resourceResolver.getResource(filePath)
+	def loopCounter = 0
+	Asset asset = res.adaptTo(Asset.class);
+	Rendition rendition = asset.getOriginal();
+	InputStream inputStream = rendition.adaptTo(InputStream.class);
+	Workbook excelWorkBook = new XSSFWorkbook(inputStream);
+	Sheet sheet = excelWorkBook.getSheetAt(0);
+	Iterator<Row> rowIterator = sheet.iterator();
+
+	int firstRowNum = sheet.getFirstRowNum();
+	int lastRowNum = sheet.getLastRowNum();
+	int count = 0;
+	int publishCount = 0;
+	def styleId = []
+	if (null != asset) {
+    	int resourceFound = 0;
+		for (int i = firstRowNum +1; i <lastRowNum+1; i++) {
+			loopCounter++
+			Row row = sheet.getRow(i);
+			int lastCell = row.getLastCellNum();
+			if(lastCell == -1) {
+				break;
+			}
+			//first column
+			Cell componentPath = row.getCell(--lastCell)
+			def componentPathValue = componentPath.getStringCellValue()
+			def pathList = resourceResolver.getResource(componentPathValue);
+			def session = resourceResolver.adaptTo(Session);
+            if (null != pathList) {
+                // Deactivating component node
+    			replicator.replicate(session, ReplicationActionType.DEACTIVATE, componentPathValue)
+    			println "Deactivated node :" +componentPathValue
+            }
+			count++;
+			session.save()
+		}
+	}
+	println "Nodes deactivated successfully: " + count;
+}else {
+	throw new IllegalArgumentException("Path should not be null");
+}

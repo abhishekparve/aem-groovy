@@ -1,0 +1,94 @@
+import javax.jcr.Node
+import javax.jcr.Session
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.lang3.StringUtils;
+import com.day.cq.dam.api.Asset;
+import com.day.cq.replication.Replicator;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+ 
+def replicator = getService("com.day.cq.replication.Replicator")
+def filePath = "/content/dam/bdb/groovy-script/rteTable.xlsx"
+if (StringUtils.isNoneBlank(filePath)) {
+	Resource res = resourceResolver.getResource(filePath)
+	def loopCounter = 0
+	Asset asset = res.adaptTo(Asset.class);
+	Rendition rendition = asset.getOriginal();
+	InputStream inputStream = rendition.adaptTo(InputStream.class);
+	Workbook excelWorkBook = new XSSFWorkbook(inputStream);
+	Sheet sheet = excelWorkBook.getSheetAt(0);
+	Iterator<Row> rowIterator = sheet.iterator();
+
+	int firstRowNum = sheet.getFirstRowNum();
+	int lastRowNum = sheet.getLastRowNum();
+	int count = 0;
+	int publishCount = 0;
+	def styleId = []
+	if (null != asset) {
+    	int resourceFound = 0;
+		for (int i = firstRowNum +1; i <lastRowNum+1; i++) {
+			loopCounter++
+			Row row = sheet.getRow(i);
+			int lastCell = row.getLastCellNum();
+			if(lastCell == -1) {
+				break;
+			}
+			//first column
+			Cell componentPath = row.getCell(--lastCell)
+			def componentPathValue = componentPath.getStringCellValue()
+			def pathList = resourceResolver.getResource(componentPathValue);
+			def session = resourceResolver.adaptTo(Session);
+            if (null != pathList) {
+                Node rteNode = getNode(componentPathValue)
+                def rtePropertyIterator = rteNode.properties
+                // Iterarting over the rte table component node and setting the properties
+                while (rtePropertyIterator.hasNext()) {
+                	def property = rtePropertyIterator.nextProperty()
+                	if(!property.name.startsWith("jcr:")) {
+                		// Setting Carousel node properties
+                		if(property.name.equalsIgnoreCase("bgColor") && property.value.string.equals("enable")) {
+                		    styleId.add("1736501515843") // Remove Top padding
+                		}
+                		else if(property.name.equalsIgnoreCase("isTableCaption") && property.value.string.equals("true")) {
+                		    styleId.add("1736511148282") //Remove Top Padding
+                		}
+                		else if(property.name.equalsIgnoreCase("togglePaddingBottom") && property.value.string.equals("true")) {
+                		    styleId.add("1736501499787") // Reduce Bottom Padding
+                		}
+                		else if(property.name.equalsIgnoreCase("togglePaddingTop") && property.value.string.equals("true")) {
+                			styleId.add("1736501492745") // Reduce Top Padding
+                		}
+                	}
+                }
+                rteNode.setProperty("cq:styleIds", styleId as String[])
+				// Removing the existing unwanted properties in the rte node
+                if (null != rteNode.getProperty('bgColor')) {
+                    rteNode.getProperty('bgColor').remove()
+                }
+                if (null != rteNode.getProperty('isTableCaption')) {
+                    rteNode.getProperty('isTableCaption').remove()
+                }
+                if (null != rteNode.getProperty('togglePaddingBottom')) {
+                    rteNode.getProperty('togglePaddingBottom').remove()
+                }
+                if (null != rteNode.getProperty('togglePaddingTop')) {
+                    rteNode.getProperty('togglePaddingTop').remove()
+                }
+            }
+			count++;
+			session.save()
+			// Activating rte table component node
+			//replicator.replicate(session, ReplicationActionType.ACTIVATE, componentPathValue)
+			//println "Activated node :" +componentPathValue
+			// Component Path
+			println "path :" +componentPathValue
+		}
+	}
+	println "Nodes updated successfully: " + count;
+}else {
+	throw new IllegalArgumentException("Path should not be null");
+}

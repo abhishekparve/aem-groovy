@@ -1,0 +1,194 @@
+import javax.jcr.Node
+import javax.jcr.Session
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.lang3.StringUtils;
+import com.day.cq.dam.api.Asset;
+import com.day.cq.replication.Replicator;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import groovy.json.JsonSlurper
+
+def replicator = getService("com.day.cq.replication.Replicator")
+def carouselResPath = "bdb-aem/proxy/components/common/carousel"
+def teaserPath = "bdb-aem/proxy/components/common/teaser"
+def styleIdsCarousel = []
+
+ 
+def filePath = "/content/dam/bdb/groovy-script/testimonial-migration/heroCarousel.xlsx"
+if (StringUtils.isNoneBlank(filePath)) {
+	Resource res = resourceResolver.getResource(filePath)
+	def loopCounter = 0
+	Asset asset = res.adaptTo(Asset.class);
+	Rendition rendition = asset.getOriginal();
+	InputStream inputStream = rendition.adaptTo(InputStream.class);
+	Workbook excelWorkBook = new XSSFWorkbook(inputStream);
+	Sheet sheet = excelWorkBook.getSheetAt(0);
+	Iterator<Row> rowIterator = sheet.iterator();
+ 
+	int firstRowNum = sheet.getFirstRowNum();
+	int lastRowNum = sheet.getLastRowNum();
+	int count = 0;
+	int publishCount = 0;
+	if (null != asset) {
+    	int resourceFound = 0;
+		for (int i = firstRowNum +1; i <lastRowNum+1; i++) {
+			loopCounter++
+			Row row = sheet.getRow(i);
+			int lastCell = row.getLastCellNum();
+			if(lastCell == -1) {
+				break;
+			}
+			//first column
+			Cell componentPath = row.getCell(--lastCell)
+			def componentPathValue = componentPath.getStringCellValue()
+			def rootPath = componentPathValue.substring(0, componentPathValue.lastIndexOf('/'))
+			def slash_heroCarousel = componentPathValue.substring(componentPathValue.lastIndexOf('/') + 1)
+			def pathList = resourceResolver.getResource(componentPathValue);
+			def rootResource = resourceResolver.getResource(rootPath);
+			def flag = rootResource.getChild("carousel")
+			String carousel = ""
+			// If the carousel node already exists in root node then renaming the carousel node
+			def time = System.currentTimeMillis()
+			if (null != flag) {
+			    carousel = "carousel"+"-"+time
+			} else {
+			    carousel = "carousel"
+			}
+
+			def session = resourceResolver.adaptTo(Session);
+			if (null != pathList && pathList.hasChildren()) {
+				def child = pathList.getChild("slides");
+				if (null != child && child.hasChildren()) {
+				    // Creating a carousel node and setting the properties
+    			    Node currentNode = rootResource.adaptTo(Node.class)
+    			    currentNode.addNode(carousel, "nt:unstructured")
+                    Node carouselNode = getNode(rootPath +"/" + carousel) 
+                    carouselNode.setProperty("sling:resourceType", carouselResPath)
+                    carouselNode.setProperty("accessibilityAutoItemTitles", "false")
+                    carouselNode.setProperty("autoplay", "true")
+                    carouselNode.setProperty("enableAnchorIdentifier", "false")
+                    carouselNode.setProperty("textIsRich", "true")
+                    carouselNode.setProperty("autopauseDisabled", "false")
+                    styleIdsCarousel.add("1735643525004") // Hero carousel variations
+                    styleIdsCarousel.add("1735643727715") // Carousel controls light
+                    carouselNode.setProperty("cq:styleIds", styleIdsCarousel.unique() as String[])
+                    Node slideNode = getNode(componentPathValue +"/slides")
+                    def childNodes = slideNode.getNodes()
+                    int j = 1
+                    while (childNodes.hasNext()) {
+                        def styleIdsTeaser = [] 
+                        def item = childNodes.nextNode()
+                        def teaserNode = carouselNode.addNode(item.name, "nt:unstructured")
+                        teaserNode.setProperty("sling:resourceType", teaserPath)
+                        teaserNode.setProperty("altValueFromDAM", "false")
+                        teaserNode.setProperty("imageFromPageImage", "false")
+                        teaserNode.setProperty("descriptionFromPage", "false")
+                        teaserNode.setProperty("titleFromPage", "false")
+                        teaserNode.setProperty("isDecorative", "false")
+                        teaserNode.setProperty("cq:panelTitle", "Slide"+ j)
+                        j++
+                        def propertyIterator = item.properties
+                        while (propertyIterator.hasNext()) {
+                            def property = propertyIterator.nextProperty()
+                            if(!property.name.startsWith("jcr:")) {
+                                if(property.name.equalsIgnoreCase("imagePath")) {
+                                    teaserNode.setProperty("fileReference", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("altImage")) {
+                                    teaserNode.setProperty("alt", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("darkMode")) {
+                                    teaserNode.setProperty("darkMode", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("brightcoveVideoId")) {
+                                    teaserNode.setProperty("brightcoveVideoId", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("labelCta")) {
+                                    teaserNode.setProperty("primaryCtaLabel", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("urlCta")) {
+                                    teaserNode.setProperty("primaryCtaLink", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("labelExtra")) {
+                                    teaserNode.setProperty("secondaryCtaLabel", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("urlExtra")) {
+                                    teaserNode.setProperty("secondaryCtaLink", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("heroTitle")) {
+                                    teaserNode.setProperty("jcr:title", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("description")) {
+                                    teaserNode.setProperty("jcr:description", property.value)
+                                }
+                                else if(property.name.equalsIgnoreCase("videoEnabled")) {
+                                    teaserNode.setProperty("videoEnabled", property.value)
+                                }
+								else if(property.name.equalsIgnoreCase("ctaAlign")) {
+                                    if(property.value.string.contains("left")) {
+                                        styleIdsTeaser.add("1739274302345")  //left content alignment
+                                    }
+                                    else if(property.value.string.contains("center")) {
+                                        styleIdsTeaser.add("1739274316935") // centre content alignment
+                                    }
+                                    else {
+                                        styleIdsTeaser.add("1739274326545") // right content alignment
+                                    }
+                                }
+                                else if(property.name.equalsIgnoreCase("thumbnail")) {
+                                    if(property.value.string.contains("playButton.svg")) {
+                                        teaserNode.setProperty("playIcon", "/content/dam/bdb/general/new-icons/playButton.svg")
+                                    } else{
+                                        teaserNode.setProperty("playIcon", "/content/dam/bdb/general/new-icons/play-video.svg")
+                                    }
+                                }
+                                else if(property.name.equalsIgnoreCase("textIsRich")) {
+            				        teaserNode.setProperty("textIsRich", "true")
+            			        }
+            			        else if(property.name.equalsIgnoreCase("fontColorVariation") || property.name.equalsIgnoreCase("ctaVariation")) {
+            			            if(property.name.equalsIgnoreCase("fontColorVariation")) {
+                                        if (property.value.string.equals("#fff")) {
+                                            styleIdsTeaser.add("1735643674988") // White
+                                        } else {
+                                            styleIdsTeaser.add("1735643682398") // Black
+                                        }
+                                    }
+                                    else if(property.name.equalsIgnoreCase("ctaVariation")) {
+                                        def jsonString = property.getString()
+                                        def json = new JsonSlurper().parseText(jsonString)
+                                        if (json.ctaTxtColor == "#fff") {
+                                            styleIdsTeaser.add("1735643851546") // Solid Blue
+                                        } 
+                                        else {
+                                            styleIdsTeaser.add("1735643891958") // Solid White
+                                        }
+                                    }
+            			        }
+                            }
+                            else {
+                                continue;
+                            }
+                        }
+                        teaserNode.setProperty("cq:styleIds", styleIdsTeaser as String[])
+                    }
+				} else {
+				    	println "Slides node is not present under :" + componentPathValue;
+				}
+			}
+			count++;
+			session.save()
+			// Activating carousel node
+			String path = rootPath +"/" + carousel
+			//replicator.replicate(session, ReplicationActionType.ACTIVATE, path)
+			//println "Activated node :" +path
+            println "path :" +path
+		}
+	}
+	println "Nodes updated successfully: " + count;
+}else {
+	throw new IllegalArgumentException("Path should not be null");
+}

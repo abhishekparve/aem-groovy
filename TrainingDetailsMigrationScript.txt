@@ -1,0 +1,216 @@
+import javax.jcr.Node
+import javax.jcr.Session
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.lang3.StringUtils;
+import com.day.cq.dam.api.Asset;
+import com.day.cq.replication.Replicator;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+
+ 
+def filePath = "/content/dam/bdb/testimonial.xlsx"
+def gridTeaserPath = "bdb-aem/proxy/components/content/gridteaser"
+def columnContainerPath = "bdb-aem/proxy/components/content/columnContainerV2"
+if (StringUtils.isNoneBlank(filePath)) {
+ 
+	Resource res = resourceResolver.getResource(filePath)
+	def loopCounter = 0
+ 
+	Asset asset = res.adaptTo(Asset.class);
+	Rendition rendition = asset.getOriginal();
+	InputStream inputStream = rendition.adaptTo(InputStream.class);
+	Workbook excelWorkBook = new XSSFWorkbook(inputStream);
+	Sheet sheet = excelWorkBook.getSheetAt(0);
+	Iterator<Row> rowIterator = sheet.iterator();
+ 
+ 
+	int firstRowNum = sheet.getFirstRowNum();
+	int lastRowNum = sheet.getLastRowNum();
+	int count = 0;
+	int publishCount = 0;
+ 
+	if (null != asset) {
+    	int resourceFound = 0;
+		for (int i = firstRowNum +1; i <lastRowNum+1; i++) {
+			loopCounter++
+			Row row = sheet.getRow(i);
+			int lastCell = row.getLastCellNum();
+			if(lastCell == -1) {
+				break;
+			}
+			//first column
+			Cell componentPath = row.getCell(--lastCell)
+			def componentPathValue = componentPath.getStringCellValue()
+			def rootPath = componentPathValue.substring(0, componentPathValue.lastIndexOf('/'))
+			def rootResource = resourceResolver.getResource(rootPath);
+			def pathList = resourceResolver.getResource(componentPathValue);
+			def session = resourceResolver.adaptTo(Session);
+			String gridTeaser = ""
+            if (null != pathList && null != rootResource) {
+                Node imageTextComponentNode = getNode(componentPathValue)
+                Node rootNode = rootResource.adaptTo(Node.class)
+                def flag = rootResource.getChild("columncontainerv2")
+    			// If the embed node already exists in root node then renaming the embed node
+    			def time = System.currentTimeMillis()
+    			if (null != flag) {
+    			    columnContainerv2 = "columncontainerv2"+"-"+time
+    			} else {
+    			    columnContainerv2 = "columncontainerv2"
+    			}
+    			// Create ColumnContainerV2 node
+                Node columnContainerNode = rootNode.addNode(columnContainerv2, "nt:unstructured")
+                columnContainerNode.setProperty("sling:resourceType", columnContainerPath)
+                columnContainerNode.setProperty("columnSelection", "2") // Set column selection to 2
+                columnContainerNode.setProperty("cq:styleIds", "1738061741033") // centre alignment
+                // columnContainerNode.setProperty("cq:showOnCreate", true)
+                // columnContainerNode.setProperty("cq:isContainer", true)
+                Node trainingdetailsNode = pathList.adaptTo(Node.class)
+                if (trainingdetailsNode.hasProperty("sectionTitle")) {
+                    String titleValue = trainingdetailsNode.getProperty("sectionTitle").getValue().toString()
+                    columnContainerNode.setProperty("title", titleValue)
+                }
+                if (trainingdetailsNode.hasProperty("textIsRich")) {
+                    columnContainerNode.setProperty("textIsRich", ["true", "true"] as String[])
+                }
+                
+                
+                for (i=1; i <= 2; i ++) {
+                def styleIds = []
+                String parsysName = "par" + i
+                Node parsysNode = columnContainerNode.addNode(parsysName, "nt:unstructured")
+                parsysNode.setProperty("sling:resourceType", "foundation/components/parsys")
+                // parsysNode.setProperty("cq:showOnCreate", true)
+                // Add GridTeaser inside each Parsys
+                String gridTeaserName = "gridteaser"
+                parsysNode.addNode(gridTeaserName, "nt:unstructured")
+                Node gridTeaserNode = getNode(rootPath + "/"  + columnContainerv2 + "/"  + parsysName + "/" + gridTeaserName)
+                gridTeaserNode.setProperty("sling:resourceType", gridTeaserPath)
+                gridTeaserNode.setProperty("cq:isContainer", false)
+                gridTeaserNode.setProperty("imageFromPageImage", "false")
+                gridTeaserNode.setProperty("altValueFromDAM", "false")
+                gridTeaserNode.setProperty("isDecorative", "false")
+                gridTeaserNode.setProperty("titleFromPage", "false")
+                gridTeaserNode.setProperty("linkTarget", "_self")
+                gridTeaserNode.setProperty("textIsRich", "true")
+                styleIds.add("1739274480793") // training details variation
+                // Getting the promogrid node
+                  if(i == 1){
+                    Node trainNode1 = getNode(componentPathValue + "/" + "trainingDetails" + "/" + "item0")
+                    def propertyIterator1 = trainNode1.properties
+                    while (propertyIterator1.hasNext()) {
+                    	def property = propertyIterator1.nextProperty()
+                    	if(!property.name.startsWith("jcr:")) {
+                    		// Setting promogrid node properties
+                    		if(property.name.equalsIgnoreCase("description")) {
+                    			gridTeaserNode.setProperty("jcr:description", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("trainingTitle")) {
+                    			gridTeaserNode.setProperty("jcr:title", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("trainingAlt")) {
+                    			gridTeaserNode.setProperty("alt", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("trainingImage")) {
+                    			gridTeaserNode.setProperty("fileReference", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("ctaLabel")) {
+                    			gridTeaserNode.setProperty("label", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("ctaUrl")) {
+                    			gridTeaserNode.setProperty("path", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("openNewImageLinkTab")) {
+                    			gridTeaserNode.setProperty("openNewTab", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("modelLabel")) {
+                    		    gridTeaserNode.setProperty("componentVariation", "trainingDetails")
+                    			gridTeaserNode.setProperty("modelLabel", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("modelText")) {
+                    			gridTeaserNode.setProperty("modelText", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("modelUrl")) {
+                    			gridTeaserNode.setProperty("modelUrl", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("color")) {
+                    		    String colorName = property.value as String
+                    		    if (colorName == "btn-primary-blue") {
+                    		        styleIds.add("1736428704442") // Solid Blue
+                    		    } else {
+                    		        styleIds.add("1736428727187") // Hollow Blue
+                    		    }
+                    		}
+                    	}
+                    }
+                    gridTeaserNode.setProperty("cq:styleIds", styleIds.unique() as String[])
+                } else if (i==2){
+                       Node trainNode2 = getNode(componentPathValue + "/" + "trainingDetails" + "/" + "item1")
+                    def propertyIterator2 = trainNode2.properties
+                    while (propertyIterator2.hasNext()) {
+                    	def property = propertyIterator2.nextProperty()
+                    	if(!property.name.startsWith("jcr:")) {
+                    		// Setting promogrid node properties
+                    		if(property.name.equalsIgnoreCase("description")) {
+                    			gridTeaserNode.setProperty("jcr:description", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("trainingTitle")) {
+                    			gridTeaserNode.setProperty("jcr:title", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("trainingAlt")) {
+                    			gridTeaserNode.setProperty("alt", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("trainingImage")) {
+                    			gridTeaserNode.setProperty("fileReference", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("ctaLabel")) {
+                    			gridTeaserNode.setProperty("label", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("ctaUrl")) {
+                    			gridTeaserNode.setProperty("path", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("openNewImageLinkTab")) {
+                    			gridTeaserNode.setProperty("openNewTab", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("modelLabel")) {
+                    		    gridTeaserNode.setProperty("componentVariation", "trainingDetails")
+                    			gridTeaserNode.setProperty("modelLabel", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("modelText")) {
+                    			gridTeaserNode.setProperty("modelText", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("modelUrl")) {
+                    			gridTeaserNode.setProperty("modelUrl", property.value)
+                    		}
+                    		else if(property.name.equalsIgnoreCase("color")) {
+                    		    String colorName = property.value as String
+                    		    if (colorName == "btn-primary-blue") {
+                    		        styleIds.add("1736428704442") // Solid Blue
+                    		    } else if (colorName == "btn-secondary") {
+                    		        styleIds.add("1736428727187") // Hollow Blue
+                    		    }
+                    		}
+                    	}
+                    }
+                    gridTeaserNode.setProperty("cq:styleIds", styleIds.unique() as String[]) 
+                    }
+                }
+            }
+                    
+			// println "Path is not present :" + componentPathValue;
+			count++;
+			session.save()
+			// Activating embed node
+			String path = rootPath + "/"  + columnContainerv2
+			//replicator.replicate(session, ReplicationActionType.ACTIVATE, path)
+			//println "Activated node :" +path
+            println "path : " +path
+		}
+	}
+	println "Nodes updated successfully: " + count;
+}else {
+	throw new IllegalArgumentException("Path should not be null");
+}

@@ -1,0 +1,142 @@
+import javax.jcr.Node
+import javax.jcr.Session
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.lang3.StringUtils;
+import com.day.cq.dam.api.Asset;
+import com.day.cq.replication.Replicator;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+
+ 
+def filePath = "/content/dam/bdb/testimonial.xlsx"
+def gridTeaserPath = "bdb-aem/proxy/components/content/gridteaser"
+if (StringUtils.isNoneBlank(filePath)) {
+ 
+	Resource res = resourceResolver.getResource(filePath)
+	def loopCounter = 0
+ 
+	Asset asset = res.adaptTo(Asset.class);
+	Rendition rendition = asset.getOriginal();
+	InputStream inputStream = rendition.adaptTo(InputStream.class);
+	Workbook excelWorkBook = new XSSFWorkbook(inputStream);
+	Sheet sheet = excelWorkBook.getSheetAt(0);
+	Iterator<Row> rowIterator = sheet.iterator();
+ 
+ 
+	int firstRowNum = sheet.getFirstRowNum();
+	int lastRowNum = sheet.getLastRowNum();
+	int count = 0;
+	int publishCount = 0;
+	def styleIds = []
+ 
+	if (null != asset) {
+    	int resourceFound = 0;
+		for (int i = firstRowNum +1; i <lastRowNum+1; i++) {
+			loopCounter++
+			Row row = sheet.getRow(i);
+			int lastCell = row.getLastCellNum();
+			if(lastCell == -1) {
+				break;
+			}
+			//first column
+			Cell componentPath = row.getCell(--lastCell)
+			def componentPathValue = componentPath.getStringCellValue()
+			def rootPath = componentPathValue.substring(0, componentPathValue.lastIndexOf('/'))
+			def rootResource = resourceResolver.getResource(rootPath);
+			def pathList = resourceResolver.getResource(componentPathValue);
+			def session = resourceResolver.adaptTo(Session);
+			String gridTeaser = ""
+            if (null != pathList && null != rootResource) {
+                Node imageTextComponentNode = getNode(componentPathValue)
+                Node rootNode = rootResource.adaptTo(Node.class)
+                def flag = rootResource.getChild("gridteaser")
+    			// If the embed node already exists in root node then renaming the embed node
+    			def time = System.currentTimeMillis()
+    			if (null != flag) {
+    			    gridTeaser = "gridteaser"+"-"+time
+    			} else {
+    			    gridTeaser = "gridteaser"
+    			}
+    			rootNode.addNode(gridTeaser, "nt:unstructured")
+    			Node gridTeaserNode = getNode(rootPath +"/" + gridTeaser) 
+                gridTeaserNode.setProperty("sling:resourceType", gridTeaserPath)
+                gridTeaserNode.setProperty("imageFromPageImage", "false")
+                gridTeaserNode.setProperty("altValueFromDAM", "false")
+                gridTeaserNode.setProperty("isDecorative", "false")
+                gridTeaserNode.setProperty("titleFromPage", "false")
+                gridTeaserNode.setProperty("linkTarget", "_self")
+                styleIds.add("1736427600277") // Adding promo card variation
+                styleIds.add("1736427600278") // Enable border
+                styleIds.add("1736428704442") // cta color (Solid Blue - Default)
+                //styleIds.add("1736254359918") // adding white background
+
+    			
+                
+                def propertyIterator = imageTextComponentNode.properties
+                // Iterarting over the freeFormHtml component node and setting the properties
+                while (propertyIterator.hasNext()) {
+                	def property = propertyIterator.nextProperty()
+                	if(!property.name.startsWith("jcr:")) {
+                		// Setting embed node properties
+                		if(property.name.equalsIgnoreCase("altimage")) {
+                		    gridTeaserNode.setProperty("alt", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("imagePath")) {
+                		    gridTeaserNode.setProperty("fileReference", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("imagetitle")) {
+                		    gridTeaserNode.setProperty("jcr:title", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("textIsRich")) {
+                			gridTeaserNode.setProperty("textIsRich", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("description")) {
+                			gridTeaserNode.setProperty("jcr:description", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("openNewImageLinkTab")) {
+                			gridTeaserNode.setProperty("openNewTab", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("labelcta")) {
+                			gridTeaserNode.setProperty("label", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("borderEnable")) {
+                			styleIds.add("1736427600278") // Enable border
+                		}
+                		else if(property.name.equalsIgnoreCase("whiteCta")) {
+                		    styleIds = styleIds - "1736428704442" // remove cta solid blue color
+                		    styleIds.add("1736428727187") // adding cta hollow blue color
+                		}
+                		else if(property.name.equalsIgnoreCase("backgroundColor")) {
+                		    String color = property.value as String
+                		    if (color == "bg-grey") {
+                		        styleIds.add("1736254366167") // adding grey background style
+                		    } else{
+                		        styleIds.add("1736254359918") // adding white background style
+                		    }
+                		}
+                		else if(property.name.equalsIgnoreCase("openNewImageLinkTab")) {
+                			gridTeaserNode.setProperty("openNewTab", property.value)
+                		}
+                	}
+                }
+                gridTeaserNode.setProperty("cq:styleIds", styleIds.unique() as String[])
+            }
+                    
+			// println "Path is not present :" + componentPathValue;
+			count++;
+			session.save()
+			// Activating embed node
+			String path = rootPath +"/" + gridTeaser
+			//replicator.replicate(session, ReplicationActionType.ACTIVATE, path)
+			//println "Activated node :" +path
+            println "path : " +path
+		}
+	}
+	println "Nodes updated successfully: " + count;
+}else {
+	throw new IllegalArgumentException("Path should not be null");
+}

@@ -1,0 +1,112 @@
+import javax.jcr.Node
+import javax.jcr.Session
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFRow;
+import org.apache.poi.xssf.usermodel.XSSFSheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.commons.lang3.StringUtils;
+import com.day.cq.dam.api.Asset;
+import com.day.cq.replication.Replicator;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+
+ 
+def filePath = "/content/dam/bdb/testimonial.xlsx"
+def embedPath = "bdb-aem/components/common/embed"
+if (StringUtils.isNoneBlank(filePath)) {
+ 
+	Resource res = resourceResolver.getResource(filePath)
+	def loopCounter = 0
+ 
+	Asset asset = res.adaptTo(Asset.class);
+	Rendition rendition = asset.getOriginal();
+	InputStream inputStream = rendition.adaptTo(InputStream.class);
+	Workbook excelWorkBook = new XSSFWorkbook(inputStream);
+	Sheet sheet = excelWorkBook.getSheetAt(0);
+	Iterator<Row> rowIterator = sheet.iterator();
+ 
+ 
+	int firstRowNum = sheet.getFirstRowNum();
+	int lastRowNum = sheet.getLastRowNum();
+	int count = 0;
+	int publishCount = 0;
+	def styleId = []
+ 
+	if (null != asset) {
+    	int resourceFound = 0;
+		for (int i = firstRowNum +1; i <lastRowNum+1; i++) {
+			loopCounter++
+			Row row = sheet.getRow(i);
+			int lastCell = row.getLastCellNum();
+			if(lastCell == -1) {
+				break;
+			}
+			//first column
+			Cell componentPath = row.getCell(--lastCell)
+			def componentPathValue = componentPath.getStringCellValue()
+			def rootPath = componentPathValue.substring(0, componentPathValue.lastIndexOf('/'))
+			def rootResource = resourceResolver.getResource(rootPath);
+			def pathList = resourceResolver.getResource(componentPathValue);
+			def session = resourceResolver.adaptTo(Session);
+			String embed = ""
+            if (null != pathList && null != rootResource) {
+                Node freeFormHtmlNode = getNode(componentPathValue)
+                Node rootNode = rootResource.adaptTo(Node.class)
+                def flag = rootResource.getChild("embed")
+    			// If the embed node already exists in root node then renaming the embed node
+    			def time = System.currentTimeMillis()
+    			if (null != flag) {
+    			    embed = "embed"+"-"+time
+    			} else {
+    			    embed = "embed"
+    			}
+    			rootNode.addNode(embed, "nt:unstructured")
+    			Node embedNode = getNode(rootPath +"/" + embed) 
+                embedNode.setProperty("sling:resourceType", embedPath)
+                embedNode.setProperty("type", "html")
+    			
+                
+                def rtePropertyIterator = freeFormHtmlNode.properties
+                // Iterarting over the freeFormHtml component node and setting the properties
+                while (rtePropertyIterator.hasNext()) {
+                	def property = rtePropertyIterator.nextProperty()
+                	if(!property.name.startsWith("jcr:")) {
+                		// Setting embed node properties
+                		if(property.name.equalsIgnoreCase("enableAnchorIdentifier")) {
+                		    embedNode.setProperty("enableAnchorIdentifier", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("anchorIdDescription")) {
+                		    embedNode.setProperty("anchorIdDescription", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("description")) {
+                		    embedNode.setProperty("description", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("textIsRich")) {
+                		    String [] value = property?.getValues() as String []
+                			embedNode.setProperty("textIsRich", value)
+                		}
+                		else if(property.name.equalsIgnoreCase("title")) {
+                			embedNode.setProperty("title", property.value)
+                		}
+                		else if(property.name.equalsIgnoreCase("embededcode")) {
+                			embedNode.setProperty("html", property.value)
+                		}
+                	}
+                }
+            }
+                    
+			// println "Path is not present :" + componentPathValue;
+			count++;
+			session.save()
+			// Activating embed node
+			String path = rootPath +"/" + embed
+			//replicator.replicate(session, ReplicationActionType.ACTIVATE, path)
+			//println "Activated node :" +path
+            println "path : " +path
+		}
+	}
+	println "Nodes updated successfully: " + count;
+}else {
+	throw new IllegalArgumentException("Path should not be null");
+}
