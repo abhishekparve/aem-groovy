@@ -1,0 +1,64 @@
+{
+	"info": {
+		"_postman_id": "f7612887-e79d-45bb-8ae0-041887e02b4a",
+		"name": "Akami Fast Purge",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "30225188"
+	},
+	"item": [
+		{
+			"name": "Invalidate by URL or ARL",
+			"request": {
+				"auth": {
+					"type": "edgegrid",
+					"edgegrid": [
+						{
+							"key": "accessToken",
+							"value": "akab-r5gr6qdliitg73n3-sjab5oq7wk25t2rw",
+							"type": "string"
+						},
+						{
+							"key": "clientToken",
+							"value": "akab-dipypkqrvucitp6e-qnxaihq3ewo7ef4k",
+							"type": "string"
+						},
+						{
+							"key": "clientSecret",
+							"value": "N46JkWjE5lxSUqE4C7Mm9UZU9b4tpUGjdS72RmWJO+o=",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"objects\": [\r\n    \"https://qa-gl.bdbiosciences.com/content/dam/bdb/products/global/reagents/flow-cytometry-reagents/research-reagents/single-color-antibodies-ruo/569193_base/569193Image1.png\"\r\n  ]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://akab-2fdcvowbgle33n5u-gjkn6f7pbnr2ex2w.luna.akamaiapis.net/ccu/v3/invalidate/url/staging",
+					"protocol": "https",
+					"host": [
+						"akab-2fdcvowbgle33n5u-gjkn6f7pbnr2ex2w",
+						"luna",
+						"akamaiapis",
+						"net"
+					],
+					"path": [
+						"ccu",
+						"v3",
+						"invalidate",
+						"url",
+						"staging"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
